@@ -2,7 +2,10 @@ use std::fmt::{Display, Formatter};
 
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
 use percent_encoding;
-use reqwest::{header, Client, StatusCode, Url};
+use reqwest::{
+    header::{self, HeaderMap},
+    Client, Response, StatusCode, Url,
+};
 
 #[derive(Debug)]
 enum Error {
@@ -37,6 +40,44 @@ impl From<url::ParseError> for Error {
     }
 }
 
+fn get_csrf_token(response: &Response) -> Result<String, Error> {
+    response
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .filter(|value| value.starts_with("REVEL_SESSION"))
+        .flat_map(|value| {
+            value
+                .split("%00")
+                .filter(|value| value.starts_with("csrf_token"))
+        })
+        .map(percent_encoding::percent_decode_str)
+        .map(|decoded| decoded.decode_utf8_lossy())
+        .filter_map(|token| {
+            token
+                .split(":")
+                .nth(1)
+                .and_then(|token| Some(token.to_string()))
+        })
+        .next()
+        .ok_or(Error::Invalid("Could not find csrf_token".to_string()))
+}
+
+fn get_cookies(response: &Response) -> HeaderMap {
+    response
+        .cookies()
+        .map(|cookie| {
+            (
+                header::COOKIE,
+                format!("{}={}", cookie.name(), cookie.value())
+                    .parse()
+                    .unwrap(),
+            )
+        })
+        .collect()
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let args = app_from_crate!()
@@ -65,43 +106,11 @@ async fn main() -> Result<(), Error> {
     if response.status() != StatusCode::OK {
         return Err(Error::Http(response.status()));
     }
-    let csrf_token = response
-        .headers()
-        .get_all("set-cookie")
-        .iter()
-        .filter_map(|value| value.to_str().ok())
-        .filter(|value| value.starts_with("REVEL_SESSION"))
-        .flat_map(|value| {
-            value
-                .split("%00")
-                .filter(|value| value.starts_with("csrf_token"))
-        })
-        .map(percent_encoding::percent_decode_str)
-        .map(|decoded| decoded.decode_utf8_lossy())
-        .filter_map(|token| {
-            token
-                .split(":")
-                .nth(1)
-                .and_then(|token| Some(token.to_string()))
-        })
-        .next()
-        .ok_or(Error::Invalid("Could not find csrf_token".to_string()))?;
+    let csrf_token = get_csrf_token(&response)?;
     let login_url = root_url.join("login")?;
     let response = client
         .post(login_url)
-        .headers(
-            response
-                .cookies()
-                .map(|cookie| {
-                    (
-                        header::COOKIE,
-                        format!("{}={}", cookie.name(), cookie.value())
-                            .parse()
-                            .unwrap(),
-                    )
-                })
-                .collect(),
-        )
+        .headers(get_cookies(&response))
         .form(&[
             ("username", username),
             ("password", password),
@@ -112,17 +121,7 @@ async fn main() -> Result<(), Error> {
     if response.status() != StatusCode::OK {
         return Err(Error::Http(response.status()));
     }
-    let cookies = response
-        .cookies()
-        .map(|cookie| {
-            (
-                header::COOKIE,
-                format!("{}={}", cookie.name(), cookie.value())
-                    .parse()
-                    .unwrap(),
-            )
-        })
-        .collect();
+    let cookies = get_cookies(&response);
     let contest_url = root_url
         .join("contests/")?
         .join(&format!("{}/", contest_id))?
