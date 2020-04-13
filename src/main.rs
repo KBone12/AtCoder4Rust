@@ -1,6 +1,10 @@
-use std::fmt::{Display, Formatter};
+use std::{
+    collections::HashMap,
+    fmt::{Display, Formatter},
+};
 
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
+use futures::future::join_all;
 use percent_encoding;
 use reqwest::{
     header::{self, HeaderMap},
@@ -79,6 +83,41 @@ fn get_cookies(response: &Response) -> HeaderMap {
         .collect()
 }
 
+fn get_samples(text: &str) -> Result<Vec<(String, String)>, Error> {
+    let document = Html::parse_document(&text);
+    let (inputs, outputs): (Vec<_>, Vec<_>) = document
+        .select(&Selector::parse("#task-statement .part").unwrap())
+        .filter_map(|part| {
+            part.select(&Selector::parse("h3").unwrap())
+                .filter_map(|h3| {
+                    if let Some(text) = h3.text().find(|text| text.starts_with("入力例")) {
+                        text.split_whitespace()
+                            .nth(1)
+                            .and_then(|index| Some((part, index, true)))
+                    } else if let Some(text) = h3.text().find(|text| text.starts_with("出力例"))
+                    {
+                        text.split_whitespace()
+                            .nth(1)
+                            .and_then(|index| Some((part, index, false)))
+                    } else {
+                        None
+                    }
+                })
+                .next()
+        })
+        .filter_map(|(part, index, is_input)| {
+            part.select(&Selector::parse("pre").unwrap())
+                .map(|pre| (pre.inner_html(), index, is_input))
+                .next()
+        })
+        .partition(|(_, _, is_input)| *is_input);
+    Ok(inputs
+        .iter()
+        .map(|(input, _, _)| input.clone())
+        .zip(outputs.iter().map(|(output, _, _)| output.clone()))
+        .collect())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let args = app_from_crate!()
@@ -127,16 +166,41 @@ async fn main() -> Result<(), Error> {
         .join("contests/")?
         .join(&format!("{}/", contest_id))?
         .join("tasks")?;
-    let response = client.get(contest_url).headers(cookies).send().await?;
+    let response = client
+        .get(contest_url)
+        .headers(cookies.clone())
+        .send()
+        .await?;
     if response.status() != StatusCode::OK {
         return Err(Error::Http(response.status()));
     }
     let html = response.text().await?;
     let document = Html::parse_document(&html);
-    document
-        .select(&Selector::parse("tbody > tr").unwrap())
+    let selector = Selector::parse("tbody > tr").unwrap();
+    let samples = document
+        .select(&selector)
         .filter_map(|tr| tr.select(&Selector::parse("td a").unwrap()).next())
-        .for_each(|a| println!("{}: {:?}", a.inner_html(), a.value().attr("href")));
+        .map(|a| {
+            let task_name = a.inner_html();
+            let url = a.value().attr("href").unwrap();
+            let root_url = root_url.clone();
+            let client = client.clone();
+            let cookies = cookies.clone();
+            async move {
+                let response = client
+                    .get(root_url.join(url)?)
+                    .headers(cookies)
+                    .send()
+                    .await?;
+                let text = response.text().await?;
+                get_samples(&text).and_then(|samples| Ok((task_name, samples)))
+            }
+        });
+    let samples = join_all(samples)
+        .await
+        .into_iter()
+        .collect::<Result<HashMap<_, _>, Error>>()?;
+    println!("{:?}", samples);
 
     Ok(())
 }
