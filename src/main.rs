@@ -163,7 +163,7 @@ async fn get_samples(
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let args = app_from_crate!()
-        .arg(Arg::with_name("contest id").index(1).required(true))
+        .arg(Arg::with_name("contest id").required(true))
         .arg(
             Arg::with_name("user")
                 .short("u")
@@ -176,7 +176,18 @@ async fn main() -> Result<(), Error> {
                 .takes_value(true)
                 .required(true),
         )
-        .arg(Arg::with_name("cookie").short("c").takes_value(true))
+        .arg(
+            Arg::with_name("cookie")
+                .short("c")
+                .takes_value(true)
+                .help("Path to the cookie directory (default: current directory)"),
+        )
+        .arg(
+            Arg::with_name("root")
+                .short("r")
+                .takes_value(true)
+                .help("Project root (default: current directory)"),
+        )
         .get_matches();
     let contest_id = args.value_of("contest id").unwrap();
     let username = args.value_of("user").unwrap();
@@ -271,7 +282,130 @@ async fn main() -> Result<(), Error> {
     }
     let html = response.text().await?;
     let samples = get_samples(&html, &client, &root_url, &cookies).await?;
-    println!("{:?}", samples);
+
+    let root_path = if let Some(root_path) = args.value_of("root") {
+        Path::new(root_path).to_owned()
+    } else {
+        env::current_dir().unwrap()
+    }
+    .join(contest_id);
+    if root_path.exists() {
+        return Err(Error::Invalid(format!("{} is already exists", contest_id)));
+    }
+    fs::create_dir(root_path.clone())?;
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(root_path.join("Cargo.toml"))?
+        .write_all(
+            format!(
+                r#"[package]
+name = "{contest_id}"
+version = "0.0.0"
+authors = ["{username}"]
+edition = "2018"
+
+[dependencies]
+"#,
+                contest_id = contest_id,
+                username = username
+            )
+            .as_bytes(),
+        )?;
+    let src_path = root_path.join("src");
+    let sample_keys = {
+        let mut tmp = samples.keys().collect::<Vec<_>>();
+        tmp.sort();
+        tmp
+    };
+    fs::create_dir(src_path.clone())?;
+    OpenOptions::new()
+        .write(true)
+        .create(true)
+        .open(src_path.join("main.rs"))?
+        .write_all(
+            format!(
+                r#"{mods}
+fn main() {{
+    let args = std::env::args();
+    if args.len() < 2 {{
+        return;
+    }}
+    match args.nth(1) {{
+{matches}
+    }}
+}}
+"#,
+                mods = sample_keys
+                    .iter()
+                    .map(|key| format!("mod {};\n", key.to_lowercase()))
+                    .collect::<String>(),
+                matches = sample_keys
+                    .iter()
+                    .map(|key| {
+                        format!(
+                            r#"        "{key}" => {key}::main(),"#,
+                            key = key.to_lowercase()
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join("\n"),
+            )
+            .as_bytes(),
+        )?;
+    samples
+        .iter()
+        .map(|(key, samples)| {
+            let test_cases = samples
+                .iter()
+                .enumerate()
+                .map(|(index, (input, output))| {
+                    format!(
+                        r##"    #[test]
+    fn sample_{index}() {{
+        let test_dir = TestDir::new("./main {key}", "");
+        let output = test_dir
+            .cmd()
+            .output_with_stdin(r#"{input}"#)
+            .tee_output()
+            .expect_success();
+        assert_eq!(output.stdout_str(), r#"{output}"#);
+        assert!(output.stderr_str().is_empty(), "stderr is not empty");
+    }}
+"##,
+                        index = index,
+                        key = key.to_lowercase(),
+                        input = input,
+                        output = output
+                    )
+                })
+                .collect::<String>();
+            OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(src_path.join(key.to_lowercase() + ".rs"))
+                .and_then(|mut options| {
+                    options.write_all(
+                        format!(
+                            r#"use proconio::input;
+
+pub fn main() {{
+}}
+
+#[cfg(test)]
+mod tests {{
+    use super::*;
+    use cli_test_dir::*;
+{test_cases}
+}}
+"#,
+                            test_cases = test_cases
+                        )
+                        .as_bytes(),
+                    )
+                })
+        })
+        .collect::<Result<_, _>>()?;
 
     Ok(())
 }
