@@ -6,6 +6,7 @@ use reqwest::{
     header::{self, HeaderMap},
     Client, Response, StatusCode, Url,
 };
+use scraper::{Html, Selector};
 
 #[derive(Debug)]
 enum Error {
@@ -130,7 +131,12 @@ async fn main() -> Result<(), Error> {
     if response.status() != StatusCode::OK {
         return Err(Error::Http(response.status()));
     }
-    println!("{}", response.text().await?);
+    let html = response.text().await?;
+    let document = Html::parse_document(&html);
+    document
+        .select(&Selector::parse("tbody > tr").unwrap())
+        .filter_map(|tr| tr.select(&Selector::parse("td a").unwrap()).next())
+        .for_each(|a| println!("{}: {:?}", a.inner_html(), a.value().attr("href")));
 
     Ok(())
 }
