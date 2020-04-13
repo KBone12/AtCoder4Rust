@@ -1,13 +1,15 @@
 use std::fmt::{Display, Formatter};
 
 use clap::{app_from_crate, crate_authors, crate_description, crate_name, crate_version, Arg};
-use reqwest::{Client, StatusCode, Url};
+use percent_encoding;
+use reqwest::{header, Client, StatusCode, Url};
 
 #[derive(Debug)]
 enum Error {
     Http(StatusCode),
     Reqwest(reqwest::Error),
     Url(url::ParseError),
+    Invalid(String),
 }
 
 impl Display for Error {
@@ -16,6 +18,7 @@ impl Display for Error {
             Error::Http(status) => write!(formatter, "{}", status),
             Error::Reqwest(e) => write!(formatter, "{}", e),
             Error::Url(e) => write!(formatter, "{}", e),
+            Error::Invalid(msg) => write!(formatter, "Invalid: {}", msg),
         }
     }
 }
@@ -38,23 +41,97 @@ impl From<url::ParseError> for Error {
 async fn main() -> Result<(), Error> {
     let args = app_from_crate!()
         .arg(Arg::with_name("contest id").index(1).required(true))
+        .arg(
+            Arg::with_name("user")
+                .short("u")
+                .takes_value(true)
+                .required(true),
+        )
+        .arg(
+            Arg::with_name("password")
+                .short("p")
+                .takes_value(true)
+                .required(true),
+        )
         .get_matches();
     let contest_id = args.value_of("contest id").unwrap();
-    println!("contest id: {}", contest_id);
+    let username = args.value_of("user").unwrap();
+    let password = args.value_of("password").unwrap();
 
-    let root_url = Url::parse("https://atcoder.jp")?;
+    let root_url = Url::parse("https://atcoder.jp/")?;
     let login_url = root_url.join("login")?;
     let client = Client::builder().cookie_store(true).build()?;
     let response = client.get(login_url).send().await?;
     if response.status() != StatusCode::OK {
         return Err(Error::Http(response.status()));
     }
-    response.headers().iter().for_each(|(key, value)| {
-        println!("{:?}: {:?}", key, value);
-    });
-    response.cookies().for_each(|cookie| {
-        println!("{:?}", cookie);
-    });
+    let csrf_token = response
+        .headers()
+        .get_all("set-cookie")
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .filter(|value| value.starts_with("REVEL_SESSION"))
+        .flat_map(|value| {
+            value
+                .split("%00")
+                .filter(|value| value.starts_with("csrf_token"))
+        })
+        .map(percent_encoding::percent_decode_str)
+        .map(|decoded| decoded.decode_utf8_lossy())
+        .filter_map(|token| {
+            token
+                .split(":")
+                .nth(1)
+                .and_then(|token| Some(token.to_string()))
+        })
+        .next()
+        .ok_or(Error::Invalid("Could not find csrf_token".to_string()))?;
+    let login_url = root_url.join("login")?;
+    let response = client
+        .post(login_url)
+        .headers(
+            response
+                .cookies()
+                .map(|cookie| {
+                    (
+                        header::COOKIE,
+                        format!("{}={}", cookie.name(), cookie.value())
+                            .parse()
+                            .unwrap(),
+                    )
+                })
+                .collect(),
+        )
+        .form(&[
+            ("username", username),
+            ("password", password),
+            ("csrf_token", &csrf_token),
+        ])
+        .send()
+        .await?;
+    if response.status() != StatusCode::OK {
+        return Err(Error::Http(response.status()));
+    }
+    let cookies = response
+        .cookies()
+        .map(|cookie| {
+            (
+                header::COOKIE,
+                format!("{}={}", cookie.name(), cookie.value())
+                    .parse()
+                    .unwrap(),
+            )
+        })
+        .collect();
+    let contest_url = root_url
+        .join("contests/")?
+        .join(&format!("{}/", contest_id))?
+        .join("tasks")?;
+    let response = client.get(contest_url).headers(cookies).send().await?;
+    if response.status() != StatusCode::OK {
+        return Err(Error::Http(response.status()));
+    }
+    println!("{}", response.text().await?);
 
     Ok(())
 }

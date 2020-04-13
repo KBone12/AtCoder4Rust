@@ -20,6 +20,7 @@ name = "atcoder-generator"
 version = "0.0.0"
 dependencies = [
  "clap",
+ "percent-encoding 2.1.0",
  "reqwest",
  "tokio",
  "url 2.1.1",
