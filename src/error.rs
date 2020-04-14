@@ -4,11 +4,16 @@ use reqwest::StatusCode;
 
 #[derive(Debug)]
 pub enum Error {
+    /// HTTP status code
     Http(StatusCode),
-    Io(std::io::Error),
-    Reqwest(reqwest::Error),
-    Url(url::ParseError),
+    /// Invalid states
     Invalid(String),
+    /// `std::io::Error`
+    Io(std::io::Error),
+    /// `reqwest::Error`
+    Reqwest(reqwest::Error),
+    /// `url::ParseError`
+    Url(url::ParseError),
 }
 
 impl Display for Error {

@@ -1,3 +1,4 @@
+/// Generate Cargo.toml as a String
 pub fn generate_cargo_toml(project_name: &str, author: &str, dependencies: &[&str]) -> String {
     format!(
         r#"[package]
@@ -15,6 +16,7 @@ edition = "2018"
     )
 }
 
+/// Generate main.rs as a String
 pub fn generate_main_rs(task_names: Vec<String>) -> String {
     let mut task_names = task_names;
     task_names.sort();
@@ -44,6 +46,7 @@ fn main() {{
     )
 }
 
+/// Generate a test as a String which check that the function passes this sample case
 pub fn generate_sample(module_name: &str, sample_name: &str, input: &str, output: &str) -> String {
     format!(
         r##"    #[test]
@@ -65,6 +68,7 @@ pub fn generate_sample(module_name: &str, sample_name: &str, input: &str, output
     )
 }
 
+/// Generate a `tests` module as a String which check that the funciton passes all sample cases
 pub fn generate_test_cases(module_name: &str, samples: &[(String, String)]) -> String {
     let samples: String = samples
         .iter()
