@@ -16,6 +16,7 @@ use reqwest::{
 use scraper::{Html, Selector};
 
 mod error;
+mod generator;
 use error::Error;
 
 fn get_csrf_token(response: &Response) -> Result<String, Error> {
@@ -258,89 +259,21 @@ async fn main() -> Result<(), Error> {
         .write(true)
         .create(true)
         .open(root_path.join("Cargo.toml"))?
-        .write_all(
-            format!(
-                r#"[package]
-name = "{contest_id}"
-version = "0.0.0"
-authors = ["{username}"]
-edition = "2018"
-
-[dependencies]
-"#,
-                contest_id = contest_id,
-                username = username
-            )
-            .as_bytes(),
-        )?;
+        .write_all(generator::generate_cargo_toml(contest_id, username, &[]).as_bytes())?;
     let src_path = root_path.join("src");
-    let sample_keys = {
-        let mut tmp = samples.keys().collect::<Vec<_>>();
-        tmp.sort();
-        tmp
-    };
+    let sample_keys = samples
+        .keys()
+        .map(|key| key.to_lowercase())
+        .collect::<Vec<_>>();
     fs::create_dir(src_path.clone())?;
     OpenOptions::new()
         .write(true)
         .create(true)
         .open(src_path.join("main.rs"))?
-        .write_all(
-            format!(
-                r#"{mods}
-fn main() {{
-    let args = std::env::args();
-    if args.len() < 2 {{
-        return;
-    }}
-    match args.nth(1) {{
-{matches}
-    }}
-}}
-"#,
-                mods = sample_keys
-                    .iter()
-                    .map(|key| format!("mod {};\n", key.to_lowercase()))
-                    .collect::<String>(),
-                matches = sample_keys
-                    .iter()
-                    .map(|key| {
-                        format!(
-                            r#"        "{key}" => {key}::main(),"#,
-                            key = key.to_lowercase()
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            )
-            .as_bytes(),
-        )?;
+        .write_all(generator::generate_main_rs(sample_keys).as_bytes())?;
     samples
         .iter()
         .map(|(key, samples)| {
-            let test_cases = samples
-                .iter()
-                .enumerate()
-                .map(|(index, (input, output))| {
-                    format!(
-                        r##"    #[test]
-    fn sample_{index}() {{
-        let test_dir = TestDir::new("./main {key}", "");
-        let output = test_dir
-            .cmd()
-            .output_with_stdin(r#"{input}"#)
-            .tee_output()
-            .expect_success();
-        assert_eq!(output.stdout_str(), r#"{output}"#);
-        assert!(output.stderr_str().is_empty(), "stderr is not empty");
-    }}
-"##,
-                        index = index,
-                        key = key.to_lowercase(),
-                        input = input,
-                        output = output
-                    )
-                })
-                .collect::<String>();
             OpenOptions::new()
                 .write(true)
                 .create(true)
@@ -353,14 +286,10 @@ fn main() {{
 pub fn main() {{
 }}
 
-#[cfg(test)]
-mod tests {{
-    use super::*;
-    use cli_test_dir::*;
 {test_cases}
-}}
 "#,
-                            test_cases = test_cases
+                            test_cases =
+                                generator::generate_test_cases(&key.to_lowercase(), samples)
                         )
                         .as_bytes(),
                     )
