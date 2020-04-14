@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     env,
     fs::{self, File, OpenOptions},
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, BufWriter, Write},
     path::Path,
 };
 
@@ -122,6 +122,56 @@ async fn get_samples(
     join_all(samples).await.into_iter().collect()
 }
 
+async fn login(
+    url: Url,
+    client: &Client,
+    username: &str,
+    password: &str,
+) -> Result<HeaderMap, Error> {
+    let response = client.get(url.clone()).send().await?;
+    if response.status() != StatusCode::OK {
+        return Err(Error::Http(response.status()));
+    }
+    let csrf_token = get_csrf_token(&response)?;
+    let response = client
+        .post(url)
+        .headers(get_cookies(&response))
+        .form(&[
+            ("username", username),
+            ("password", password),
+            ("csrf_token", &csrf_token),
+        ])
+        .send()
+        .await?;
+    if response.status() != StatusCode::OK {
+        return Err(Error::Http(response.status()));
+    }
+    Ok(get_cookies(&response))
+}
+
+fn load_cookies<P: AsRef<Path>>(path: P) -> Result<HeaderMap, Error> {
+    let reader = BufReader::new(File::open(path)?);
+    Ok(reader
+        .lines()
+        .filter_map(|line| line.ok())
+        .filter_map(|line| HeaderValue::from_str(&line).ok())
+        .map(|value| (header::COOKIE, value))
+        .collect())
+}
+
+fn save_cookies<P: AsRef<Path>>(cookies: &HeaderMap, path: P) -> Result<(), Error> {
+    let mut writer = BufWriter::new(OpenOptions::new().write(true).create(true).open(path)?);
+    writer.write_all(
+        cookies
+            .iter()
+            .filter_map(|(_, value)| value.to_str().ok())
+            .collect::<Vec<_>>()
+            .join("\n")
+            .as_bytes(),
+    )?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let args = app_from_crate!()
@@ -161,22 +211,11 @@ async fn main() -> Result<(), Error> {
         let cookie_path = if let Some(path) = args.value_of("cookie") {
             Path::new(path).to_owned()
         } else {
-            env::current_dir().unwrap()
+            env::current_dir()?
         };
-        if !cookie_path.exists() {
-            fs::create_dir_all(cookie_path.clone())?;
-        }
         let cookie_path = cookie_path.join("cookie.txt");
         if cookie_path.exists() {
-            let reader = BufReader::new(File::open(cookie_path)?);
-            Some(
-                reader
-                    .lines()
-                    .filter_map(|line| line.ok())
-                    .filter_map(|line| HeaderValue::from_str(&line).ok())
-                    .map(|value| (header::COOKIE, value))
-                    .collect(),
-            )
+            Some(load_cookies(cookie_path)?)
         } else {
             None
         }
@@ -184,27 +223,7 @@ async fn main() -> Result<(), Error> {
     let cookies = if let Some(cookies) = cookies {
         cookies
     } else {
-        let login_url = root_url.join("login")?;
-        let response = client.get(login_url).send().await?;
-        if response.status() != StatusCode::OK {
-            return Err(Error::Http(response.status()));
-        }
-        let csrf_token = get_csrf_token(&response)?;
-        let login_url = root_url.join("login")?;
-        let response = client
-            .post(login_url)
-            .headers(get_cookies(&response))
-            .form(&[
-                ("username", username),
-                ("password", password),
-                ("csrf_token", &csrf_token),
-            ])
-            .send()
-            .await?;
-        if response.status() != StatusCode::OK {
-            return Err(Error::Http(response.status()));
-        }
-        let cookies = get_cookies(&response);
+        let cookies = login(root_url.join("login")?, &client, username, password).await?;
 
         let cookie_path = if let Some(path) = args.value_of("cookie") {
             Path::new(path).to_owned()
@@ -215,18 +234,7 @@ async fn main() -> Result<(), Error> {
             fs::create_dir_all(cookie_path.clone())?;
         }
         let cookie_path = cookie_path.join("cookie.txt");
-        OpenOptions::new()
-            .write(true)
-            .create(true)
-            .open(cookie_path)?
-            .write_all(
-                cookies
-                    .iter()
-                    .flat_map(|(_, value)| value.to_str().ok())
-                    .collect::<Vec<_>>()
-                    .join("\n")
-                    .as_bytes(),
-            )?;
+        save_cookies(&cookies, cookie_path)?;
 
         cookies
     };
@@ -248,7 +256,7 @@ async fn main() -> Result<(), Error> {
     let root_path = if let Some(root_path) = args.value_of("root") {
         Path::new(root_path).to_owned()
     } else {
-        env::current_dir().unwrap()
+        env::current_dir()?
     }
     .join(contest_id);
     if root_path.exists() {
