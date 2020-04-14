@@ -261,10 +261,7 @@ async fn main() -> Result<(), Error> {
         .open(root_path.join("Cargo.toml"))?
         .write_all(generator::generate_cargo_toml(contest_id, username, &[]).as_bytes())?;
     let src_path = root_path.join("src");
-    let sample_keys = samples
-        .keys()
-        .map(|key| key.to_lowercase())
-        .collect::<Vec<_>>();
+    let sample_keys: Vec<_> = samples.keys().map(|key| key.to_lowercase()).collect();
     fs::create_dir(src_path.clone())?;
     OpenOptions::new()
         .write(true)
@@ -286,10 +283,9 @@ async fn main() -> Result<(), Error> {
 pub fn main() {{
 }}
 
-{test_cases}
+{}
 "#,
-                            test_cases =
-                                generator::generate_test_cases(&key.to_lowercase(), samples)
+                            generator::generate_test_cases(&key.to_lowercase(), samples)
                         )
                         .as_bytes(),
                     )
