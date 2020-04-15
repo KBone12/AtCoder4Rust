@@ -103,7 +103,6 @@ pub fn generate_test_cases(
     format!(
         r#"#[cfg(test)]
 mod tests {{
-    use super::*;
     use cli_test_dir::*;
 
 {samples}
