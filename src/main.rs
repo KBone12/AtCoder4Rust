@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     env,
     fs::{self, File, OpenOptions},
-    io::{BufRead, BufReader, BufWriter, Write},
+    io::{self, BufRead, BufReader, BufWriter, Write},
     path::Path,
 };
 
@@ -96,7 +96,7 @@ async fn get_samples(
     text: &str,
     client: &Client,
     root_url: &Url,
-    cookies: &HeaderMap,
+    cookies: &Option<HeaderMap>,
 ) -> Result<HashMap<String, Vec<(String, String)>>, Error> {
     let document = Html::parse_document(text);
     let selector = Selector::parse("tbody > tr").unwrap();
@@ -112,7 +112,7 @@ async fn get_samples(
             async move {
                 let response = client
                     .get(root_url.join(url)?)
-                    .headers(cookies)
+                    .headers(cookies.unwrap_or_default())
                     .send()
                     .await?;
                 let text = response.text().await?;
@@ -176,67 +176,89 @@ fn save_cookies<P: AsRef<Path>>(cookies: &HeaderMap, path: P) -> Result<(), Erro
 async fn main() -> Result<(), Error> {
     let args = app_from_crate!()
         .arg(Arg::with_name("contest id").required(true))
-        .arg(
-            Arg::with_name("user")
-                .short("u")
-                .takes_value(true)
-                .required(true),
-        )
-        .arg(
-            Arg::with_name("password")
-                .short("p")
-                .takes_value(true)
-                .required(true),
-        )
+        .arg(Arg::with_name("user").short("u").takes_value(true))
+        .arg(Arg::with_name("password").short("p").takes_value(true))
         .arg(
             Arg::with_name("cookie")
                 .short("c")
                 .takes_value(true)
-                .help("Path to the cookie directory (default: current directory)"),
+                .help("Path to the cookie file (default: cookie.txt in the current directory)"),
         )
+        .arg(Arg::with_name("no-login").long("no-login"))
         .arg(
             Arg::with_name("root")
-                .short("r")
+                .long("root")
                 .takes_value(true)
-                .help("Project root (default: current directory)"),
+                .help("Project's root (default: current directory)"),
         )
         .get_matches();
     let contest_id = args.value_of("contest id").unwrap();
-    let username = args.value_of("user").unwrap();
-    let password = args.value_of("password").unwrap();
+    let username = args.value_of("user");
+    let password = args.value_of("password");
 
     let root_url = Url::parse("https://atcoder.jp/")?;
     let client = Client::builder().cookie_store(true).build()?;
     let cookies: Option<HeaderMap> = {
+        // Find a local cookie file
         let cookie_path = if let Some(path) = args.value_of("cookie") {
             Path::new(path).to_owned()
         } else {
-            env::current_dir()?
+            env::current_dir()?.join("cookie.txt")
         };
-        let cookie_path = cookie_path.join("cookie.txt");
         if cookie_path.exists() {
             Some(load_cookies(cookie_path)?)
         } else {
             None
         }
     };
-    let cookies = if let Some(cookies) = cookies {
-        cookies
+    let cookies = if args.is_present("no-login") {
+        None
+    } else if let Some(cookies) = cookies {
+        Some(cookies)
     } else {
-        let cookies = login(root_url.join("login")?, &client, username, password).await?;
+        // Login interactively & save cookies
+        let username = if let Some(username) = username {
+            username.to_owned()
+        } else {
+            print!("User name: ");
+            io::stdout().flush()?;
+            let mut buf = String::new();
+            io::stdin().read_line(&mut buf)?;
+            buf.trim().to_owned()
+        };
+        let password = if let Some(password) = password {
+            password.to_owned()
+        } else {
+            print!("Password: ");
+            io::stdout().flush()?;
+            let mut buf = String::new();
+            io::stdin().read_line(&mut buf)?;
+            buf.trim().to_owned()
+        };
+        let cookies = login(root_url.join("login")?, &client, &username, &password).await?;
+        let succeeded = cookies
+            .get_all(header::COOKIE)
+            .iter()
+            .filter_map(|cookie| cookie.to_str().ok())
+            .inspect(|cookie| println!("{}", cookie))
+            .any(|cookie| cookie.contains(&username));
+        if !succeeded {
+            return Err(Error::Invalid("Failed to login".to_owned()));
+        }
 
         let cookie_path = if let Some(path) = args.value_of("cookie") {
-            Path::new(path).to_owned()
+            let path = Path::new(path);
+            let parent = path.parent().expect("--cookie must be a path to the file");
+            if !parent.exists() {
+                fs::create_dir_all(parent)?;
+            }
+            path.to_owned()
         } else {
-            env::current_dir().unwrap()
+            env::current_dir().unwrap().join("cookie.txt")
         };
-        if !cookie_path.exists() {
-            fs::create_dir_all(cookie_path.clone())?;
-        }
-        let cookie_path = cookie_path.join("cookie.txt");
         save_cookies(&cookies, cookie_path)?;
 
-        cookies
+        Some(cookies)
     };
     let contest_url = root_url
         .join("contests/")?
@@ -244,7 +266,7 @@ async fn main() -> Result<(), Error> {
         .join("tasks")?;
     let response = client
         .get(contest_url)
-        .headers(cookies.clone())
+        .headers(cookies.clone().unwrap_or_default())
         .send()
         .await?;
     if response.status() != StatusCode::OK {
