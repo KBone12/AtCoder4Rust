@@ -1,9 +1,5 @@
 /// Generate Cargo.toml as a String
-pub fn generate_cargo_toml(
-    project_name: &str,
-    author: Option<&str>,
-    dependencies: &[&str],
-) -> String {
+pub fn generate_cargo_toml(project_name: &str, author: Option<&str>, dependencies: &str) -> String {
     format!(
         r#"[package]
 name = "{name}"
@@ -16,7 +12,7 @@ edition = "2018"
 "#,
         name = project_name,
         author = author.unwrap_or_default(),
-        dependencies = dependencies.join("\n")
+        dependencies = dependencies
     )
 }
 

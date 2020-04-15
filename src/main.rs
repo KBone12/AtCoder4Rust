@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     env,
     fs::{self, File, OpenOptions},
-    io::{self, BufRead, BufReader, BufWriter, Write},
+    io::{self, BufRead, BufReader, BufWriter, Read, Write},
     path::Path,
 };
 
@@ -175,7 +175,11 @@ fn save_cookies<P: AsRef<Path>>(cookies: &HeaderMap, path: P) -> Result<(), Erro
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let args = app_from_crate!()
-        .arg(Arg::with_name("contest id").required(true))
+        .arg(
+            Arg::with_name("contest id")
+                .required(true)
+                .help("Contest's id (e.g. abc001)"),
+        )
         .arg(Arg::with_name("user").short("u").takes_value(true))
         .arg(Arg::with_name("password").short("p").takes_value(true))
         .arg(
@@ -187,9 +191,21 @@ async fn main() -> Result<(), Error> {
         .arg(Arg::with_name("no-login").long("no-login"))
         .arg(
             Arg::with_name("root")
-                .long("root")
+                .short("r")
                 .takes_value(true)
                 .help("Project's root (default: current directory)"),
+        )
+        .arg(
+            Arg::with_name("dependencies")
+                .short("d")
+                .takes_value(true)
+                .help("Path to the file which is a dependency list written in Cargo.toml format"),
+        )
+        .arg(
+            Arg::with_name("template")
+                .short("t")
+                .takes_value(true)
+                .help("Path to the template file for [task].rs"),
         )
         .get_matches();
     let contest_id = args.value_of("contest id").unwrap();
@@ -285,11 +301,21 @@ async fn main() -> Result<(), Error> {
         return Err(Error::Invalid(format!("{} is already exists", contest_id)));
     }
     fs::create_dir(root_path.clone())?;
+    let dependencies = if let Some(dependencies) = args.value_of("dependencies") {
+        let mut reader = BufReader::new(File::open(dependencies)?);
+        let mut buf = String::new();
+        reader.read_to_string(&mut buf)?;
+        buf
+    } else {
+        r#"proconio = { version = "=0.3.6", features = ["derive"] }"#.to_owned()
+    };
     OpenOptions::new()
         .write(true)
         .create(true)
         .open(root_path.join("Cargo.toml"))?
-        .write_all(generator::generate_cargo_toml(contest_id, username, &[]).as_bytes())?;
+        .write_all(
+            generator::generate_cargo_toml(contest_id, username, &dependencies).as_bytes(),
+        )?;
     let src_path = root_path.join("src");
     let sample_keys: Vec<_> = samples.keys().map(|key| key.to_lowercase()).collect();
     fs::create_dir(src_path.clone())?;
@@ -298,6 +324,19 @@ async fn main() -> Result<(), Error> {
         .create(true)
         .open(src_path.join("main.rs"))?
         .write_all(generator::generate_main_rs(sample_keys).as_bytes())?;
+    let template = if let Some(template) = args.value_of("template") {
+        let mut reader = BufReader::new(File::open(template)?);
+        let mut buf = String::new();
+        reader.read_to_string(&mut buf)?;
+        buf
+    } else {
+        r#"use proconio::input;
+
+pub fn main() {
+}
+"#
+        .to_owned()
+    };
     samples
         .iter()
         .map(|(key, samples)| {
@@ -308,13 +347,8 @@ async fn main() -> Result<(), Error> {
                 .and_then(|mut options| {
                     options.write_all(
                         format!(
-                            r#"use proconio::input;
-
-pub fn main() {{
-}}
-
-{}
-"#,
+                            "{}\n{}",
+                            template,
                             generator::generate_test_cases(&key.to_lowercase(), samples)
                         )
                         .as_bytes(),
