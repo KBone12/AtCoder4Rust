@@ -346,12 +346,7 @@ async fn main() -> Result<(), Error> {
         reader.read_to_string(&mut buf)?;
         buf
     } else {
-        r#"use proconio::input;
-
-pub fn main() {
-}
-"#
-        .to_owned()
+        "pub fn main() {\n}".to_owned()
     };
     samples
         .iter()
