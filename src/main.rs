@@ -14,6 +14,7 @@ use reqwest::{
     Client, Response, StatusCode, Url,
 };
 use scraper::{Html, Selector};
+use tokio::stream::{self, StreamExt};
 
 mod error;
 mod generator;
@@ -348,8 +349,7 @@ async fn main() -> Result<(), Error> {
     } else {
         "pub fn main() {\n}".to_owned()
     };
-    samples
-        .iter()
+    stream::iter(samples)
         .map(|(key, samples)| {
             let src = OpenOptions::new()
                 .write(true)
@@ -367,7 +367,7 @@ async fn main() -> Result<(), Error> {
                             generator::generate_test_cases(
                                 contest_id,
                                 &key.to_lowercase(),
-                                samples
+                                &samples
                             )
                         )
                         .as_bytes(),
@@ -375,7 +375,8 @@ async fn main() -> Result<(), Error> {
                 });
             src.and(tests)
         })
-        .collect::<Result<_, _>>()?;
+        .collect::<Result<_, _>>()
+        .await?;
 
     Ok(())
 }
