@@ -271,7 +271,6 @@ async fn main() -> Result<(), Error> {
             .get_all(header::COOKIE)
             .iter()
             .filter_map(|cookie| cookie.to_str().ok())
-            .inspect(|cookie| println!("{}", cookie))
             .any(|cookie| cookie.contains(&username));
         if !succeeded {
             return Err(Error::Invalid("Failed to login".to_owned()));
