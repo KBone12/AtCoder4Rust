@@ -180,11 +180,22 @@ async fn main() -> Result<(), Error> {
                 .required(true)
                 .help("Contest's id (e.g. abc001)"),
         )
-        .arg(Arg::with_name("user").short("u").takes_value(true))
-        .arg(Arg::with_name("password").short("p").takes_value(true))
+        .arg(
+            Arg::with_name("user")
+                .short("u")
+                .long("user")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("password")
+                .short("p")
+                .long("password")
+                .takes_value(true),
+        )
         .arg(
             Arg::with_name("cookie")
                 .short("c")
+                .long("cookie")
                 .takes_value(true)
                 .help("Path to the cookie file (default: cookie.txt in the current directory)"),
         )
@@ -192,18 +203,21 @@ async fn main() -> Result<(), Error> {
         .arg(
             Arg::with_name("root")
                 .short("r")
+                .long("root")
                 .takes_value(true)
                 .help("Project's root (default: current directory)"),
         )
         .arg(
             Arg::with_name("dependencies")
                 .short("d")
+                .long("dependencies")
                 .takes_value(true)
                 .help("Path to the file which is a dependency list written in Cargo.toml format"),
         )
         .arg(
             Arg::with_name("template")
                 .short("t")
+                .long("template")
                 .takes_value(true)
                 .help("Path to the template file for [task].rs"),
         )
