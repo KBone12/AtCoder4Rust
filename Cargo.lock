@@ -17,7 +17,7 @@ checksum = "d663a8e9a99154b5fb793032533f6328da35e23aac63d5c152279aa8ba356825"
 
 [[package]]
 name = "atcoder4rust"
-version = "0.4.1"
+version = "0.4.2"
 dependencies = [
  "clap",
  "futures",
