@@ -175,6 +175,7 @@ fn save_cookies<P: AsRef<Path>>(cookies: &HeaderMap, path: P) -> Result<(), Erro
 #[tokio::main]
 async fn main() -> Result<(), Error> {
     let args = app_from_crate!()
+        .author("kbone")
         .arg(
             Arg::with_name("contest id")
                 .required(true)

@@ -3,6 +3,7 @@ name = "atcoder-generator"
 version = "0.3.1"
 authors = ["kbone <kbonehobby@gmail.com>"]
 edition = "2018"
+description = "Template generator for solving AtCoder contests in Rust"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
