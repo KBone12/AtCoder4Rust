@@ -67,10 +67,15 @@ pub fn generate_sample(
             .cmd()
             .arg("{module_name}")
             .output_with_stdin(r#"{input}"#)
-            .tee_output()
             .expect_success();
+        let stderr = output.stderr_str();
+        if !stderr.is_empty() {{
+            eprintln!("=== stderr ===");
+            eprint!("{{}}", stderr);
+            eprintln!("==============");
+        }}
         assert_eq!(output.stdout_str(), r#"{output}"#);
-        assert!(output.stderr_str().is_empty(), "stderr is not empty");
+        assert!(stderr.is_empty(), "stderr is not empty");
     }}
 "##,
         project_name = project_name,
