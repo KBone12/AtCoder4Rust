@@ -363,7 +363,11 @@ pub fn main() {
                         format!(
                             "{}\n{}",
                             template,
-                            generator::generate_test_cases(&key.to_lowercase(), samples)
+                            generator::generate_test_cases(
+                                contest_id,
+                                &key.to_lowercase(),
+                                samples
+                            )
                         )
                         .as_bytes(),
                     )

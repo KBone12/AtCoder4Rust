@@ -8,7 +8,7 @@ authors = ["{author}"]
 edition = "2018"
 
 [[bin]]
-name = "main"
+name = "{name}"
 path = "src/main.rs"
 
 [dependencies]
@@ -52,13 +52,20 @@ fn main() {{
 }
 
 /// Generate a test as a String which check that the function passes this sample case
-pub fn generate_sample(module_name: &str, sample_name: &str, input: &str, output: &str) -> String {
+pub fn generate_sample(
+    project_name: &str,
+    module_name: &str,
+    sample_name: &str,
+    input: &str,
+    output: &str,
+) -> String {
     format!(
         r##"    #[test]
     fn {sample_name}() {{
-        let test_dir = TestDir::new("./main {module_name}", "");
+        let test_dir = TestDir::new("./{project_name}", "");
         let output = test_dir
             .cmd()
+            .arg("{module_name}")
             .output_with_stdin(r#"{input}"#)
             .tee_output()
             .expect_success();
@@ -66,6 +73,7 @@ pub fn generate_sample(module_name: &str, sample_name: &str, input: &str, output
         assert!(output.stderr_str().is_empty(), "stderr is not empty");
     }}
 "##,
+        project_name = project_name,
         sample_name = sample_name,
         module_name = module_name,
         input = input,
@@ -74,12 +82,22 @@ pub fn generate_sample(module_name: &str, sample_name: &str, input: &str, output
 }
 
 /// Generate a `tests` module as a String which check that the funciton passes all sample cases
-pub fn generate_test_cases(module_name: &str, samples: &[(String, String)]) -> String {
+pub fn generate_test_cases(
+    project_name: &str,
+    module_name: &str,
+    samples: &[(String, String)],
+) -> String {
     let samples: String = samples
         .iter()
         .enumerate()
         .map(|(index, (input, output))| {
-            generate_sample(module_name, &format!("sample_{}", index + 1), input, output)
+            generate_sample(
+                project_name,
+                module_name,
+                &format!("sample_{}", index + 1),
+                input,
+                output,
+            )
         })
         .collect();
     format!(
