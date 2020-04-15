@@ -1,6 +1,6 @@
 [package]
 name = "atcoder-generator"
-version = "0.3.1"
+version = "0.3.2"
 authors = ["kbone <kbonehobby@gmail.com>"]
 edition = "2018"
 description = "Template generator for solving AtCoder contests in Rust"
