@@ -36,12 +36,13 @@ pub fn generate_main_rs(task_names: Vec<String>) -> String {
     format!(
         r#"{mods}
 fn main() {{
-    let args = std::env::args();
+    let mut args = std::env::args();
     if args.len() < 2 {{
         return;
     }}
-    match args.nth(1).unwrap() {{
+    match args.nth(1).unwrap().as_str() {{
 {matches}
+        _ => {}
     }}
 }}
 "#,
