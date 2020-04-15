@@ -7,6 +7,10 @@ version = "0.1.0"
 authors = ["{author}"]
 edition = "2018"
 
+[[bin]]
+name = "main"
+path = "src/main.rs"
+
 [dependencies]
 {dependencies}
 "#,
