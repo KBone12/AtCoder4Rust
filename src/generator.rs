@@ -40,7 +40,7 @@ fn main() {{
     if args.len() < 2 {{
         return;
     }}
-    match args.nth(1) {{
+    match args.nth(1).unwrap() {{
 {matches}
     }}
 }}
