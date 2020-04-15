@@ -35,7 +35,7 @@ abc001
 
 ## TODO
  * [ ] cookieの有効期限が切れた場合の更新
- * [ ] 依存クレートの整理 (特に`tokio`の`features`周り)
+ * [x] 依存クレートの整理 (特に`tokio`の`features`周り)
 
 ## License
  * Apache License, Version 2.0 ([http://www.apache.org/licenses/LICENSE-2.0](http://www.apache.org/licenses/LICENSE-2.0))

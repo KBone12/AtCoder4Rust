@@ -1,6 +1,6 @@
 [package]
 name = "atcoder4rust"
-version = "0.6.2"
+version = "0.7.0"
 authors = ["kbone <kbonehobby@gmail.com>"]
 edition = "2018"
 description = "Template generator for solving AtCoder contests in Rust"
@@ -14,4 +14,4 @@ percent-encoding = "2.1.0"
 reqwest = {version = "0.10.4", features = ["cookies"]}
 scraper = "0.11.0"
 url = "2.1.1"
-tokio = {version = "0.2.17", features = ["full"]}
+tokio = {version = "0.2.17", features = ["macros", "rt-core", "rt-threaded", "stream"]}
