@@ -42,7 +42,7 @@ fn main() {{
     }}
     match args.nth(1).unwrap().as_str() {{
 {matches}
-        _ => {}
+        _ => {{}},
     }}
 }}
 "#,
