@@ -331,8 +331,10 @@ async fn main() -> Result<(), Error> {
             generator::generate_cargo_toml(contest_id, username, &dependencies).as_bytes(),
         )?;
     let src_path = root_path.join("src");
+    let tests_path = root_path.join("tests");
     let sample_keys: Vec<_> = samples.keys().map(|key| key.to_lowercase()).collect();
     fs::create_dir(src_path.clone())?;
+    fs::create_dir(tests_path.clone())?;
     OpenOptions::new()
         .write(true)
         .create(true)
@@ -354,15 +356,19 @@ pub fn main() {
     samples
         .iter()
         .map(|(key, samples)| {
-            OpenOptions::new()
+            let src = OpenOptions::new()
                 .write(true)
                 .create(true)
                 .open(src_path.join(key.to_lowercase() + ".rs"))
+                .and_then(|mut options| options.write_all(template.as_bytes()));
+            let tests = OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(tests_path.join(key.to_lowercase() + ".rs"))
                 .and_then(|mut options| {
                     options.write_all(
                         format!(
-                            "{}\n{}",
-                            template,
+                            "{}",
                             generator::generate_test_cases(
                                 contest_id,
                                 &key.to_lowercase(),
@@ -371,7 +377,8 @@ pub fn main() {
                         )
                         .as_bytes(),
                     )
-                })
+                });
+            src.and(tests)
         })
         .collect::<Result<_, _>>()?;
 
