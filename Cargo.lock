@@ -16,7 +16,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d663a8e9a99154b5fb793032533f6328da35e23aac63d5c152279aa8ba356825"
 
 [[package]]
-name = "atcoder-generator"
+name = "atcoder4rust"
 version = "0.3.2"
 dependencies = [
  "clap",

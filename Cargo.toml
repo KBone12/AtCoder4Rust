@@ -1,5 +1,5 @@
 [package]
-name = "atcoder-generator"
+name = "atcoder4rust"
 version = "0.3.2"
 authors = ["kbone <kbonehobby@gmail.com>"]
 edition = "2018"
